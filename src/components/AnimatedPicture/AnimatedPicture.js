@@ -1,18 +1,28 @@
-import { useRef, useEffect } from "react"
-import AnimatePixels from "./animatePixels"
+import { useRef, useEffect } from "react";
+import AnimatePicture from "./animatePicture";
+import { string, object } from "prop-types";
 
-const AnimatedPicture = ({pic}) => {
+const AnimatedPicture = ({ src, color, reactCanvasStateRef, ...props }) => {
+  const canvasRef = useRef(null);
 
-    const canvasRef = useRef(null)
+  useEffect(() => {
+    const animatePicture = new AnimatePicture({
+      src,
+      canvasRef,
+      canvasStateRef: reactCanvasStateRef,
+      color,
+    });
+    animatePicture.init();
+    return () => animatePicture.cancel();
+  }, [src, color, reactCanvasStateRef]);
 
-    useEffect(()=>{
-  
-  const animatePixels = new AnimatePixels(pic, canvasRef)
-  animatePixels.init()
-  
-    },[])
+  return <canvas {...props} ref={canvasRef} />;
+};
 
-    return <canvas ref={canvasRef} />
-}
+AnimatedPicture.propTypes = {
+  src: string,
+  color: string,
+  reactCanvasStateRef: object,
+};
 
-export default AnimatedPicture
+export default AnimatedPicture;

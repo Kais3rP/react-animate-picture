@@ -1,36 +1,29 @@
-export default class AnimatePixels {
-  constructor(data, canvasRef) {
-    // SETTINGS
-    this.density = 16;
-    this.drawDistance = 24;
-    this.baseRadius = 4;
-    this.maxLineThickness = 4;
-    this.reactionSensitivity = 3;
-    this.lineThickness = 1;
-    //DATA
-    this.points = [];
-    this.mouse = { x: -1000, y: -1000, down: false };
-    //ANIMATION REF
-    this.animation = null;
-    //CANVAS
+export default class AnimatePicture {
+  constructor({ src, canvasRef, canvasStateRef, color }) {
+    // CANVAS
     this.canvas = canvasRef.current;
     this.context = null;
-    //MISC
+    this.color = color;
+    this.setSize();
+    // SETTINGS
+    this.setSettings();
+    // DATA
+    this.points = [];
+    this.mouse = { x: -1000, y: -1000, down: false };
+    // ANIMATION REF
+    this.animation = null;
+    // MISC
     this.imageInput = null;
     this.bgImage = null;
-    this.bgCanvas = null;
-    this.bgContext = null;
     this.bgContextPixelData = null;
-    this.data = data;
+    this.data = src;
+    this.canvasState = canvasStateRef;
   }
 
   init() {
-    const that = this;
     // Set up the visual canvas
     this.context = this.canvas.getContext("2d");
     this.context.globalCompositeOperation = "lighter";
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
     this.canvas.style.display = "block";
 
     this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
@@ -38,21 +31,33 @@ export default class AnimatePixels {
     this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
     this.canvas.addEventListener("mouseout", this.mouseOut.bind(this), false);
 
-    window.onresize = function (event) {
-      that.canvas.width = window.innerWidth;
-      that.canvas.height = window.innerHeight;
-      that.onWindowResize();
-    };
+    window.onresize = this.onWindowResize.bind(this);
 
     // Load initial input image
     this.loadData(this.data);
   }
 
+  setSize() {
+    this.canvas.width = this.canvas.parentNode.getBoundingClientRect().width;
+    this.canvas.height = this.canvas.parentNode.getBoundingClientRect().height;
+  }
+
+  /* Optimized to give good performance on different screen sizes */
+
+  setSettings() {
+    this.density =
+      this.canvas.width < 600 ? 12 : this.canvas.width < 1000 ? 20 : 30;
+    this.drawDistance = 1;
+    this.baseRadius =
+      this.canvas.width < 600 ? 6 : this.canvas.width < 1000 ? 10 : 15;
+    this.maxLineThickness = 10;
+    this.reactionSensitivity = 5;
+    this.lineThickness = 100;
+  }
+
   preparePoints() {
     // Clear the current points
     this.points = [];
-
-    let width, height;
 
     const colors = this.bgContextPixelData.data;
 
@@ -71,14 +76,10 @@ export default class AnimatePixels {
         }
 
         const color =
-          "rgba(" +
-          colors[pixelPosition] +
-          "," +
-          colors[pixelPosition + 1] +
-          "," +
-          colors[pixelPosition + 2] +
-          "," +
-          "1)";
+          this.color ||
+          `rgba(${colors[pixelPosition]},${colors[pixelPosition + 1]},${
+            colors[pixelPosition + 2]
+          },1)`;
         this.points.push({
           x: j,
           y: i,
@@ -94,7 +95,11 @@ export default class AnimatePixels {
     for (let i = 0; i < this.points.length; i++) {
       let distance;
       const currentPoint = this.points[i];
+      const r = Math.random() * 255;
+      const g = Math.random() * 255;
+      const b = Math.random() * 255;
 
+      currentPoint.color = `rgb(${r},${g},${b})`;
       const theta = Math.atan2(
         currentPoint.y - this.mouse.y,
         currentPoint.x - this.mouse.x
@@ -184,11 +189,9 @@ export default class AnimatePixels {
   }
 
   draw() {
-    const that = this;
-    this.animation = requestAnimationFrame(function () {
-      that.draw();
-    });
-
+    this.animation = requestAnimationFrame(this.draw.bind(this));
+    if (!this.canvasState.current.visible) return;
+    console.log("RENDERING Canvas", this.canvasState.current);
     this.clear();
     this.updatePoints();
     this.drawLines();
@@ -196,7 +199,9 @@ export default class AnimatePixels {
   }
 
   clear() {
-    this.canvas.width = this.canvas.width;
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    /* Resetting canvas width to perform the clear is slow and not well supported */
+    // this.canvas.width = this.canvas.width;
   }
 
   loadData(data) {
@@ -209,20 +214,18 @@ export default class AnimatePixels {
   }
 
   drawImageToBackground() {
-    this.bgCanvas = document.createElement("canvas");
-    this.bgCanvas.width = this.canvas.width;
-    this.bgCanvas.height = this.canvas.height;
-
     let newWidth, newHeight;
+    const smallerWidth = this.canvas.width - this.canvas.width / 10;
+    const smallerHeight = this.canvas.height - this.canvas.height / 10;
 
     // If the image is too big for the screen... scale it down.
     if (
-      this.bgImage.width > this.bgCanvas.width - 100 ||
-      this.bgImage.height > this.bgCanvas.height - 100
+      this.bgImage.width > smallerWidth ||
+      this.bgImage.height > smallerHeight
     ) {
       const maxRatio = Math.max(
-        this.bgImage.width / (this.bgCanvas.width - 100),
-        this.bgImage.height / (this.bgCanvas.height - 100)
+        this.bgImage.width / smallerWidth,
+        this.bgImage.height / smallerHeight
       );
       newWidth = this.bgImage.width / maxRatio;
       newHeight = this.bgImage.height / maxRatio;
@@ -232,23 +235,26 @@ export default class AnimatePixels {
     }
 
     // Draw to background canvas
-    this.bgContext = this.bgCanvas.getContext("2d");
-    this.bgContext.drawImage(
+    this.context = this.canvas.getContext("2d");
+    this.context.drawImage(
       this.bgImage,
       (this.canvas.width - newWidth) / 2,
       (this.canvas.height - newHeight) / 2,
       newWidth,
       newHeight
     );
-    this.bgContextPixelData = this.bgContext.getImageData(
-      0,
-      0,
-      this.bgCanvas.width,
-      this.bgCanvas.height
-    );
+    /* Make sure canvas has width height or it throws */
+    if (this.canvas.width !== 0 && this.canvas.height !== 0) {
+      this.bgContextPixelData = this.context.getImageData(
+        0,
+        0,
+        this.canvas.width,
+        this.canvas.height
+      );
 
-    this.preparePoints();
-    this.draw();
+      this.preparePoints();
+      this.draw();
+    }
   }
 
   mouseDown(e) {
@@ -272,6 +278,12 @@ export default class AnimatePixels {
 
   onWindowResize() {
     cancelAnimationFrame(this.animation);
+    this.setSize();
+    this.setSettings();
     this.drawImageToBackground();
+  }
+
+  cancel() {
+    window.cancelAnimationFrame(this.animation);
   }
 }
